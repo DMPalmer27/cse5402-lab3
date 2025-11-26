@@ -10,7 +10,7 @@
  * 
  */
 
-
+use std::io::Write;
 use super::scene_fragment::SceneFragment;
 use super::declarations;
 
@@ -76,7 +76,10 @@ impl Play {
         if tokens.len() == SINGLE_TOKEN && tokens[FIRST_TOKEN] == SCENE_INDICATOR {
             use std::sync::atomic::Ordering;
             if declarations::WHINGE_ON.load(Ordering::SeqCst){
-                eprintln!("Warning: scene identified but has no title so has not been added");
+                match writeln!(std::io::stderr().lock(), "Warning: scene identified but has no title so has not been added") {
+                    Ok(_) => {}, //success
+                    Err(_) => {}, //fail
+                }
             }
             return;
         }
@@ -88,7 +91,10 @@ impl Play {
             if tokens.len() != SINGLE_TOKEN{
                 use std::sync::atomic::Ordering;
                 if declarations::WHINGE_ON.load(Ordering::SeqCst) {
-                    eprintln!("Warning: there are additional tokens in the line \"{}\" that is being treated as a config file name", line);
+                    match writeln!(std::io::stderr().lock(), "Warning: there are additional tokens in the line \"{}\" that is being treated as a config file name", line){
+                        Ok(_) => {}, //success
+                        Err(_) => {}, //fail
+                    }
                 }
             }
         }
@@ -104,7 +110,10 @@ impl Play {
         let mut lines: Vec<String> = Vec::new();
         declarations::grab_trimmed_file_lines(script_file_name, &mut lines)?;
         if lines.len() == EMPTY {
-            eprintln!("Error: the script gen file must contain at least 1 line");
+            match writeln!(std::io::stderr().lock(), "Error: the script gen file must contain at least 1 line"){
+                Ok(_) => {}, //success
+                Err(_) => {}, //fail
+            }
             return Err(declarations::ERR_SCRIPT_GEN);
         }
         for line in &lines {
@@ -123,7 +132,10 @@ impl Play {
         if self.fragments.len() != EMPTY && !self.fragments[FIRST_FRAGMENT].scene_title.is_empty() {
             Ok(())
         } else {
-            eprintln!("Error: script generation failed");
+            match writeln!(std::io::stderr().lock(), "Error: script generation failed"){
+                Ok(_) => {}, //success
+                Err(_) => {}, //fail
+            }
             Err(declarations::ERR_SCRIPT_GEN)
         }
     }

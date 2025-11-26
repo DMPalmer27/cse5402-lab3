@@ -10,6 +10,7 @@
  */
 
 use std::cmp::Ordering;
+use std::io::Write;
 
 use super::declarations;
 
@@ -48,14 +49,20 @@ impl Player {
                     Err(_) => {
                         use std::sync::atomic::Ordering;
                         if declarations::WHINGE_ON.load(Ordering::SeqCst) {
-                            eprintln!("Warning: {} does not contain a valid usize value", first_token_trim);
+                            match writeln!(std::io::stderr().lock(), "Warning: {} does not contain a valid usize value", first_token_trim) {
+                                Ok(_) => {},// success
+                                Err(_) => {},//fail
+                            }
                         }
                     },
                 }
             } else {
                 use std::sync::atomic::Ordering;
                 if declarations::WHINGE_ON.load(Ordering::SeqCst) {
-                    eprintln!("Warning: line contains only a single token and is invalid");
+                    match writeln!(std::io::stderr().lock(), "Warning: line contains only a single token and is invalid") {
+                        Ok(_) => {}, // success
+                        Err(_) => {}, //fail
+                    }
                 }
             }
         }
@@ -79,10 +86,16 @@ impl Player {
         if self.line_index < self.lines.len() {
             if *recent_player != self.name {
                 *recent_player = self.name.clone();
-                println!("\n {}", self.name);
+                match writeln!(std::io::stdout().lock(), "\n {}", self.name){
+                    Ok(_) => {}, //success
+                    Err(_) => {}, //fail
+                }
             }
             let (_, line) = &self.lines[self.line_index];
-            println!("{}", line);
+            match writeln!(std::io::stdout().lock(), "{}", line) {
+                Ok(_) => {}, //success
+                Err(_) => {}, //fail
+            }
             self.line_index += 1;
         }
     }
