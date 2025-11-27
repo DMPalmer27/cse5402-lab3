@@ -70,14 +70,15 @@ impl Player {
 
     // This method adds the lines from a character's part file into the character's Player struct
     // lines field
-    pub fn prepare(&mut self, file_name: &str) -> Result<(), u8> {
+    pub fn prepare(&mut self, file_name: &str) {
         let mut lines: Vec<String> = Vec::new();
-        declarations::grab_trimmed_file_lines(file_name, &mut lines)?;
+        if let Err(_) = declarations::grab_trimmed_file_lines(file_name, &mut lines){
+            panic!("Failed to read file");
+        }
         for line in &lines {
             self.add_script_line(line);
         }
         self.lines.sort();
-        Ok(())
     }
 
     // This method speaks the character's next line. If the character was not previously speaking,
