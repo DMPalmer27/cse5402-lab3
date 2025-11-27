@@ -11,6 +11,7 @@
  */
 
 use std::io::Write;
+use std::sync::{Arc, Mutex};
 use super::scene_fragment::SceneFragment;
 use super::declarations;
 
@@ -29,10 +30,18 @@ const SECOND_FRAGMENT: usize = 1;
 const START: usize = 0;
 
 
+macro_rules! poison_mutex_print {
+    () => {
+        match writeln!(std::io::stderr().lock(), "Error: mutex was poisoned and could not be accessed") {
+            Ok(_) => {} //success
+            Err(_) => {} //fail
+        }
+    };
+}
 
 
 pub struct Play {
-    fragments: Vec<SceneFragment>,
+    fragments: Vec<Arc<Mutex<SceneFragment>>>,
 }
 
 
@@ -54,7 +63,7 @@ impl Play {
                 (false, text) => {
                     let mut frag = SceneFragment::new(&title);
                     frag.prepare(&text)?;
-                    self.fragments.push(frag);
+                    self.fragments.push(Arc::new(Mutex::new(frag)));
                     title = "".to_string();
                 }
             }
@@ -129,8 +138,24 @@ impl Play {
         let mut script_config: ScriptConfig = Default::default();
         Self::read_config(script_file_name, &mut script_config)?;
         self.process_config(&script_config)?;
-        if self.fragments.len() != EMPTY && !self.fragments[FIRST_FRAGMENT].scene_title.is_empty() {
-            Ok(())
+        if self.fragments.len() != EMPTY {
+            match self.fragments[FIRST_FRAGMENT].lock() {
+                Ok(ref frag_guard) => {
+                    if !frag_guard.scene_title.is_empty() { 
+                        Ok(()) 
+                    } else {
+                        match writeln!(std::io::stderr().lock(), "Error: script generation failed") {
+                            Ok(_) => {}, //success
+                            Err(_) => {}, //fail
+                        }
+                        Err(declarations::ERR_SCRIPT_GEN)
+                    }
+                }
+                Err(_) => {
+                    poison_mutex_print!();
+                    Err(declarations::ERR_MUTEX)
+                }
+            }
         } else {
             match writeln!(std::io::stderr().lock(), "Error: script generation failed"){
                 Ok(_) => {}, //success
@@ -150,24 +175,45 @@ impl Play {
             // to the frag at index i and immutable references to the before and after frags
             let (before, rest) = self.fragments.split_at_mut(i);
             let (frag, after) = rest.split_at_mut(SECOND_FRAGMENT);
-            let frag = &mut frag[FIRST_FRAGMENT];
 
-            let prev = if i > START {Some(&before[i-1])} else {None};
-            let next = if i < len - 1 {Some(&after[FIRST_FRAGMENT])} else {None};
+            let prev_arc = if i > START {Some(&before[i-1])} else {None};
+            let next_arc = if i < len - 1 {Some(&after[FIRST_FRAGMENT])} else {None};
 
-            if let Some(p) = prev {
-                frag.enter(p);
-            } else {
-                frag.enter_all();
+            match frag[FIRST_FRAGMENT].lock() {
+                Ok(ref mut frag_guard) => {
+                    if let Some(p) = prev_arc {
+                        match p.lock() {
+                            Ok(ref p_guard) => {
+                                frag_guard.enter(p_guard);
+                            }
+                            Err(_) => {
+                                poison_mutex_print!();
+                            }
+                        }
+                    } else {
+                        frag_guard.enter_all();
+                    }
+
+                    frag_guard.recite();
+
+                    if let Some(n) = next_arc {
+                        match n.lock() {
+                            Ok(ref n_guard) => {
+                                frag_guard.exit(n_guard);
+                            }
+                            Err(_) => {
+                                poison_mutex_print!();
+                            }
+                        }
+                    } else {
+                        frag_guard.exit_all();
+                    }
+                }
+                Err(_) => {
+                    poison_mutex_print!();
+                }
             }
 
-            frag.recite();
-
-            if let Some(n) = next {
-                frag.exit(n);
-            } else {
-                frag.exit_all();
-            }
         }
 
     }
