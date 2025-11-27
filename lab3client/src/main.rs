@@ -11,6 +11,7 @@
 pub mod lab3;
 
 use std::env;
+use std::io::Write;
 use lab3::declarations;
 use lab3::play::Play;
 use lab3::return_wrapper::ReturnWrapper;
@@ -19,7 +20,10 @@ use lab3::return_wrapper::ReturnWrapper;
 // This function is called whenver the program is ran with improper command line arguments and it
 // prints a message telling the user how to run the program
 fn usage(name: &String) {
-    println!("Usage: ./{name} <script_file_name> [whinge]");
+    match writeln!(std::io::stdout().lock(), "Usage: ./{name} <script_file_name> [whinge]") {
+        Ok(_) => {}, //success
+        Err(_) => {}, //fail
+    }
 }
 
 // This function is used to parse the command line arguments. It takes one parameter, a mutable

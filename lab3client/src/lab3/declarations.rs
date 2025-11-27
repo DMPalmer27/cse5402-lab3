@@ -14,15 +14,16 @@ pub const PROG_NAME: usize = 0;
 pub const CONFIG_FILE: usize = 1;
 pub const WHINGE_MODE: usize = 2;
 
-pub const ERR_CMD_LINE: u8= 1;
-pub const ERR_SCRIPT_GEN: u8= 2;
+pub const ERR_CMD_LINE: u8 = 1;
+pub const ERR_SCRIPT_GEN: u8 = 2;
+pub const ERR_MUTEX: u8 = 3;
 
 use std::sync::atomic::AtomicBool;
 pub static WHINGE_ON: AtomicBool = AtomicBool::new(false);
 
 
 use std::fs::File;
-use std::io::{BufReader, BufRead};
+use std::io::{BufReader, BufRead, Write};
 
 // This function is used to open and read lines from a file. 
 // Ita Result type that is an error if a file could not be opened or read from,
@@ -30,7 +31,10 @@ use std::io::{BufReader, BufRead};
 pub fn grab_trimmed_file_lines(file_name: &str, file_lines: &mut Vec<String>) -> Result<(), u8> {
     match File::open(file_name) {
         Err(_) => {
-            eprintln!("Error: script generation failed because the file {} could not be opened", file_name);
+            match writeln!(std::io::stderr().lock(), "Error: script generation failed because the file {} could not be opened", file_name){
+                Ok(_) => {},
+                Err(_) => {},
+            }
             return Err(ERR_SCRIPT_GEN);
         },
         Ok(f) => {
@@ -40,7 +44,10 @@ pub fn grab_trimmed_file_lines(file_name: &str, file_lines: &mut Vec<String>) ->
                 s.clear();
                 match reader.read_line(&mut s) {
                     Err(_) => {
-                        eprintln!("Error: script generation failed because line could not be read");
+                        match writeln!(std::io::stderr().lock(), "Error: script generation failed because line could not be read") {
+                            Ok(_) => {},
+                            Err(_) => {},
+                        }
                         return Err(ERR_SCRIPT_GEN);
                     },
                     Ok(bytes_read) => {

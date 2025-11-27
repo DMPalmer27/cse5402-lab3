@@ -9,6 +9,7 @@
 
 
 use std::process::{Termination, ExitCode};
+use std::io::Write;
 
 const SUCCESS: u8 = 0;
 
@@ -28,7 +29,10 @@ impl ReturnWrapper {
 impl Termination for ReturnWrapper {
     fn report(self) -> ExitCode {
         if self.val != SUCCESS {
-            eprintln!("Error: {}", self.val);
+            match writeln!(std::io::stderr().lock(), "Error: {}", self.val) {
+                Ok(_) => {}, //success
+                Err(_) => {}, //fail
+            }
         }
         ExitCode::from(self.val)
     }

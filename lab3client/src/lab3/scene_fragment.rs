@@ -9,6 +9,9 @@
  */
 
 use std::collections::HashSet;
+use std::io::Write;
+use std::sync::{Arc, Mutex};
+use std::cmp::Ordering;
 
 use super::player::Player;
 use super::declarations;
@@ -21,12 +24,22 @@ const CHARACTER_FILE: usize = 1;
 const CONFIG_LINE_TOKENS: usize = 2;
 const MIN_CONFIG_LINES: usize = 2;
 const FIRST_LINE: usize = 0;
+const EMPTY: usize = 0;
 const EXPECTED_NUM_SPEAKERS: usize = 1;
+
+macro_rules! poison_mutex_print {
+    () => {
+        match writeln!(std::io::stderr().lock(), "Error: mutex was poisoned and could not be accessed") {
+            Ok(_) => {} //success
+            Err(_) => {} //fail
+        }
+    };
+}
 
 
 pub struct SceneFragment {
     pub scene_title: String,
-    characters: Vec<Player>,
+    characters: Vec<Arc<Mutex<Player>>>,
 }
 
 
@@ -48,7 +61,7 @@ impl SceneFragment {
                 (name, file) => {
                     let mut character = Player::new(&name);
                     character.prepare(&file)?;
-                    self.characters.push(character);
+                    self.characters.push(Arc::new(Mutex::new(character)));
                 }
             }
         }
@@ -64,7 +77,10 @@ impl SceneFragment {
         if delimited_tokens.len() != CONFIG_LINE_TOKENS {
             use std::sync::atomic::Ordering;
             if declarations::WHINGE_ON.load(Ordering::SeqCst) {
-                eprintln!("Warning: There were not exactly two distinct tokens in the line {}", line);
+                match writeln!(std::io::stderr().lock(), "Warning: there were not exactly two distinct tokens in the line {}", line) {
+                    Ok(_) => {}, //success
+                    Err(_) => {}, //fail
+                }
             }
         }
         if delimited_tokens.len() >= CONFIG_LINE_TOKENS {
@@ -84,7 +100,10 @@ impl SceneFragment {
         let mut lines: Vec<String> = Vec::new();
         declarations::grab_trimmed_file_lines(config_file_name, &mut lines)?;
         if lines.len() < MIN_CONFIG_LINES {
-            eprintln!("Error: the config file must contain at least one character and associated text file");
+            match writeln!(std::io::stderr().lock(), "Error: the config file must contain at least one character and associated text file") {
+                Ok(_) => {}, //success
+                Err(_) => {},//fail
+            }
             return Err(declarations::ERR_SCRIPT_GEN);
         }
         for line in &lines {
@@ -100,7 +119,7 @@ impl SceneFragment {
         let mut play_config: PlayConfig = Default::default();
         Self::read_config(config_file_name, &mut play_config)?;
         self.process_config(&play_config)?;
-        self.characters.sort();
+        self.characters.sort_by(SceneFragment::compare_players);
         Ok(())
     }
 
@@ -113,7 +132,15 @@ impl SceneFragment {
         loop {
             let min_line_number = match self.characters
                 .iter()
-                .filter_map(|c| c.next_line())
+                .filter_map(|c| {
+                    match c.lock() {
+                        Ok(ref c_guard) => c_guard.next_line(),
+                        Err(_) => {
+                            poison_mutex_print!();
+                            None
+                        }
+                    }
+                })
                 .min(){
                 Some(n) => n,
                 None => break,
@@ -123,27 +150,38 @@ impl SceneFragment {
             while min_line_number > next_line_number {
                 use std::sync::atomic::Ordering;
                 if declarations::WHINGE_ON.load(Ordering::SeqCst) {
-                    eprintln!("Warning: missing line {}", next_line_number);
+                    match writeln!(std::io::stderr().lock(), "Warning: missing line {}", next_line_number) {
+                        Ok(_) => {}, //success
+                        Err(_) => {}, //fail
+                    }
                 }
                 next_line_number += 1;
             }
 
-
-            let next_characters: Vec<&mut Player> = self.characters
-                .iter_mut()
-                .filter(|c| c.next_line() == Some(min_line_number))
-                .collect(); // Holds all characters who have a line which number is the minimum
-            if next_characters.len() != EXPECTED_NUM_SPEAKERS {
-                use std::sync::atomic::Ordering;
-                if declarations::WHINGE_ON.load(Ordering::SeqCst) {
-                    eprintln!("Warning: there are {} characters who have a line with number {}", next_characters.len(), min_line_number);
+            let mut num_speakers = EMPTY;
+            for c in &self.characters {
+                match c.lock() {
+                    Ok(ref mut c_guard) => {
+                        if c_guard.next_line() == Some(min_line_number) {
+                            c_guard.speak(&mut cur_speaker);
+                            num_speakers += 1;
+                        }
+                    }
+                    Err(_) => {
+                        poison_mutex_print!();
+                    }
                 }
             }
             
-            for c in next_characters {
-                c.speak(&mut cur_speaker);
+            if num_speakers != EXPECTED_NUM_SPEAKERS {
+                use std::sync::atomic::Ordering;
+                if declarations::WHINGE_ON.load(Ordering::SeqCst) {
+                    match writeln!(std::io::stderr().lock(), "Warning: there are {} characters who have a line with number {}", num_speakers, min_line_number) {
+                        Ok(_) => {}, //success
+                        Err(_) => {}, //fail
+                    }
+                }
             }
-            
             next_line_number += 1;
         }
     }
@@ -151,14 +189,36 @@ impl SceneFragment {
     // This function announces all characters in self but not in other for scene transitions
     pub fn enter(&self, other: &Self) {
         if !self.scene_title.trim().is_empty(){
-            println!("\n{}\n", self.scene_title);
+            match writeln!(std::io::stdout().lock(), "\n{}\n", self.scene_title){
+                Ok(_) => {}, //success
+                Err(_) => {}, //fail
+            }
         }
-        let other_names: HashSet<&str> = other.characters.iter()
-            .map(|c| c.name.as_str())
+        let other_names: HashSet<String> = other.characters.iter()
+            .filter_map(|c| {
+                match c.lock() {
+                    Ok(ref c_guard) => Some(c_guard.name.clone()),
+                    Err(_) => {
+                        poison_mutex_print!();
+                        None
+                    }
+                }
+            })
             .collect();
-        for name in self.characters.iter().map(|c| c.name.as_str()) {
-            if !other_names.contains(name) {
-                println!("[Enter {}.]", name);
+        for name in self.characters.iter().filter_map(|c| {
+            match c.lock() {
+                Ok(ref c_guard) => Some(c_guard.name.clone()),
+                Err(_) => {
+                    poison_mutex_print!();
+                    None
+                }
+            }
+        }) {
+            if !other_names.contains(&name) {
+                match writeln!(std::io::stdout().lock(), "[Enter {}.]", name) {
+                    Ok(_) => {}, //success
+                    Err(_) => {}, //fail
+                }
             }
         }
         
@@ -166,36 +226,108 @@ impl SceneFragment {
     // This function announces the entrance of all characters in self
     pub fn enter_all(&self) {
         if !self.scene_title.trim().is_empty(){
-            println!("\n{}\n", self.scene_title);
+            match writeln!(std::io::stdout().lock(), "\n{}\n", self.scene_title){
+                Ok(_) => {}, //success
+                Err(_) => {}, //fail
+            }
         }
-        for name in self.characters.iter().map(|c| c.name.as_str()) {
-            println!("[Enter {}.]", name);
+        for name in self.characters.iter().filter_map(|c| {
+            match c.lock() {
+                Ok(ref c_guard) => Some(c_guard.name.clone()),
+                Err(_) => {
+                    poison_mutex_print!();
+                    None
+                }
+            }
+        }) {
+            match writeln!(std::io::stdout().lock(), "[Enter {}.]", name) {
+                Ok(_) => {}, //success
+                Err(_) => {}, //fail
+            }
         }
     }
 
     // This function announces the exit of characters in self but not in other. This is so
     // that only the characters who are actually exiting are announced as such.
     pub fn exit(&self, other: &Self) {
-        let other_names: HashSet<&str> = other.characters.iter()
-            .map(|c| c.name.as_str())
+        let other_names: HashSet<String> = other.characters.iter()
+            .filter_map(|c| {
+                match c.lock() {
+                    Ok(ref c_guard) => Some(c_guard.name.clone()),
+                    Err(_) => {
+                        poison_mutex_print!();
+                        None
+                    }
+                }
+            })
             .collect();
-        println!();
-        for name in self.characters.iter().rev().map(|c| c.name.as_str()) {
-            if !other_names.contains(name) {
-                println!("[Exit {}.]", name);
+        match writeln!(std::io::stdout().lock()) {
+            Ok(_) => {}, //success
+            Err(_) => {}, //fail
+        }
+        for name in self.characters.iter().rev().filter_map(|c| {
+            match c.lock() {
+                Ok(ref c_guard) => Some(c_guard.name.clone()),
+                Err(_) => {
+                    poison_mutex_print!();
+                    None
+                }
+            }
+        }) {
+            if !other_names.contains(&name) {
+                match writeln!(std::io::stdout().lock(), "[Exit {}.]", name){
+                    Ok(_) => {}, //success
+                    Err(_) => {}, //fail
+                }
             }
         }
-        println!();
+        match writeln!(std::io::stdout().lock()) {
+            Ok(_) => {}, //success
+            Err(_) => {}, //fail
+        }
     }
 
     // This function announces the exit of all characters in self
     pub fn exit_all(&self) {
-        println!();
-        for name in self.characters.iter().rev().map(|c| c.name.as_str()) {
-            println!("[Exit {}.]", name);
+        match writeln!(std::io::stdout().lock()) {
+            Ok(_) => {}, //success
+            Err(_) => {}, //fail
         }
-        println!();
+        for name in self.characters.iter().rev().filter_map(|c| {
+            match c.lock() {
+                Ok(ref c_guard) => Some(c_guard.name.clone()),
+                Err(_) => {
+                    poison_mutex_print!();
+                    None
+                }
+            }
+        }) {
+            match writeln!(std::io::stdout().lock(), "[Exit {}.]", name) {
+                Ok(_) => {}, //success
+                Err(_) => {}, //fail
+            }
+        }
+        match writeln!(std::io::stdout().lock()) {
+            Ok(_) => {}, //success
+            Err(_) => {}, //fail
+        }
     }
 
+    // This function returns the ordering between two players in a thread safe way by acquiring the
+    // required mutexes and then calling the partial comparison implentation for the underlying
+    // Player
+    pub fn compare_players(a: &Arc<Mutex<Player>>, b: &Arc<Mutex<Player>>) -> Ordering {
+        let a_lock = a.lock();
+        let b_lock = b.lock();
+        match (a_lock, b_lock) {
+            (Ok(ref a_guard), Ok(ref b_guard)) => {
+                match Player::partial_cmp(a_guard, b_guard) {
+                    Some(order) => order,
+                    _ => Ordering::Equal,
+                }
+            }
+            _ => Ordering::Equal,
+        }
+    }
 
 }
