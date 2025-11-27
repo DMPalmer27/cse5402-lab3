@@ -12,6 +12,7 @@ use std::collections::HashSet;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::cmp::Ordering;
+use std::thread;
 
 use super::player::Player;
 use super::declarations;
@@ -56,12 +57,27 @@ impl SceneFragment {
     // text file. 
     // If it fails the error is propagated out and otherwise Ok(()) is returned
     fn process_config(&mut self, play_config: &PlayConfig) -> Result<(), u8> {
+        let mut thread_handles = Vec::new();
         for tup in play_config {
             match tup {
                 (name, file) => {
+                    let file = file.to_string();
                     let mut character = Player::new(&name);
-                    character.prepare(&file)?;
-                    self.characters.push(Arc::new(Mutex::new(character)));
+                    let handle = thread::spawn( move || -> Player{
+                        character.prepare(&file);
+                        character
+                    });
+                    thread_handles.push(handle);
+                }
+            }
+        }
+        for h in thread_handles {
+            match h.join() {
+                Err(_) => {
+                    return Err(declarations::ERR_SCRIPT_GEN)
+                }
+                Ok(c) => {
+                    self.characters.push(Arc::new(Mutex::new(c)));
                 }
             }
         }
@@ -115,12 +131,15 @@ impl SceneFragment {
 
     // This method does the script generation for a given scene. It uses the above functions to
     // populate the self Play with associated information.
-    pub fn prepare(&mut self, config_file_name: &str) -> Result<(), u8> {
+    pub fn prepare(&mut self, config_file_name: &str)  {
         let mut play_config: PlayConfig = Default::default();
-        Self::read_config(config_file_name, &mut play_config)?;
-        self.process_config(&play_config)?;
+        if let Err(_) = Self::read_config(config_file_name, &mut play_config){
+            panic!("Failed to read config");
+        }
+        if let Err(_) = self.process_config(&play_config){
+            panic!("Failed to process config");
+        }
         self.characters.sort_by(SceneFragment::compare_players);
-        Ok(())
     }
 
 

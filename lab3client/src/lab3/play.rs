@@ -12,6 +12,7 @@
 
 use std::io::Write;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use super::scene_fragment::SceneFragment;
 use super::declarations;
 
@@ -55,16 +56,32 @@ impl Play {
     // This function processes a passed in ScriptConfig. For each item in the ScriptConfig if it contains a scene title it updates the title and otherwise creates a new SceneFragment, adds it to the Play's fragments, and prepares the fragment with its associated file. If it fails, the error is propagated out and otherwise Ok(()) is returned
     fn process_config(&mut self, script_config: &ScriptConfig) -> Result<(), u8> {
         let mut title  = String::new();
+        let mut thread_handles = Vec::new();
         for tup in script_config {
             match tup {
                 (true, text) => { //Text is a new title
                     title = text.clone();
                 },
                 (false, text) => {
+                    let text = text.to_string();
                     let mut frag = SceneFragment::new(&title);
-                    frag.prepare(&text)?;
-                    self.fragments.push(Arc::new(Mutex::new(frag)));
+                    let handle = thread::spawn( move || -> SceneFragment{
+                        frag.prepare(&text);
+                        frag
+                    });
                     title = "".to_string();
+
+                    thread_handles.push(handle);
+                }
+            }
+        }
+        for h in thread_handles {
+            match h.join() {
+                Err(_) => {
+                    return Err(declarations::ERR_SCRIPT_GEN)
+                } //thread panicked
+                Ok(frag) => {
+                    self.fragments.push(Arc::new(Mutex::new(frag)));
                 }
             }
         }
