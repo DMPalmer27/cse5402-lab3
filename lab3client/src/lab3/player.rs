@@ -26,6 +26,7 @@ pub struct Player {
     line_index: usize,
 }
 
+//This implementation block creates all associated methods and functions for the player
 impl Player {
     pub fn new(name: &str) -> Self {
         Self {
@@ -49,9 +50,8 @@ impl Player {
                     Err(_) => {
                         use std::sync::atomic::Ordering;
                         if declarations::WHINGE_ON.load(Ordering::SeqCst) {
-                            match writeln!(std::io::stderr().lock(), "Warning: {} does not contain a valid usize value", first_token_trim) {
-                                Ok(_) => {},// success
-                                Err(_) => {},//fail
+                            if let Err(_) = writeln!(std::io::stderr().lock(), "Warning: {} does not contain a valid usize value", first_token_trim) {
+                                // Print fail
                             }
                         }
                     },
@@ -59,9 +59,8 @@ impl Player {
             } else {
                 use std::sync::atomic::Ordering;
                 if declarations::WHINGE_ON.load(Ordering::SeqCst) {
-                    match writeln!(std::io::stderr().lock(), "Warning: line contains only a single token and is invalid") {
-                        Ok(_) => {}, // success
-                        Err(_) => {}, //fail
+                    if let Err(_) = writeln!(std::io::stderr().lock(), "Warning: line contains only a single token and is invalid") {
+                        // Print fail
                     }
                 }
             }
@@ -87,15 +86,13 @@ impl Player {
         if self.line_index < self.lines.len() {
             if *recent_player != self.name {
                 *recent_player = self.name.clone();
-                match writeln!(std::io::stdout().lock(), "\n {}", self.name){
-                    Ok(_) => {}, //success
-                    Err(_) => {}, //fail
+                if let Err(_) = writeln!(std::io::stdout().lock(), "\n {}", self.name){
+                    // Print fail
                 }
             }
             let (_, line) = &self.lines[self.line_index];
-            match writeln!(std::io::stdout().lock(), "{}", line) {
-                Ok(_) => {}, //success
-                Err(_) => {}, //fail
+            if let Err(_) = writeln!(std::io::stdout().lock(), "{}", line) {
+                // Print fail
             }
             self.line_index += 1;
         }
@@ -113,7 +110,8 @@ impl Player {
     }
 }
 
-
+// This block implements the partial equivalent trait for the player which allows the comparison of
+// players to decide which to introduce first
 impl PartialEq for Player {
     fn eq(&self, other: &Self) -> bool {
         let self_silent = self.lines.len() == 0;
@@ -130,16 +128,23 @@ impl PartialEq for Player {
     }
 }
 
-
+// This block implements the equivalent trait for the player which is done in the partial
+// equivalent block above. So, there is no new logic here
 impl Eq for Player{}
 
-// The ordering is complete, so partial ordering should just wrap the result of cmp in Some
+// This block implements the partial ordering trait for the player which allows more
+// complicated comparison of players to decide which to introduce first. The ordering is complete, 
+// so partial ordering should just wrap the result of cmp in Some
 impl PartialOrd for Player {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
+// This block implements the strict ordering trait for the player which, same as partial ordreing,
+// alows more complicated comparison of players to decide which to introduce first. It checks if
+// any of the players are silent because this is the "greatest" value and, if both characters are
+// not silent, detects which has the first line.
 impl Ord for Player {
     fn cmp(&self, other: &Self) -> Ordering {
         let self_silent = self.lines.len() == 0;

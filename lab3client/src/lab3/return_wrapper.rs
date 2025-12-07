@@ -17,6 +17,7 @@ pub struct ReturnWrapper {
     val: u8,
 }
 
+// This block contains the implementation for a ReturnWrapper which is solely the constructor
 impl ReturnWrapper {
     pub fn new(r: Result<(), u8>) -> Self {
         match r {
@@ -26,12 +27,14 @@ impl ReturnWrapper {
     }
 }
 
+// This block contains the implementation of the Termination trait for ReturnWrapper which allows
+// it to specify the values returned by the main program. It allows the program to specify its
+// termination behavior.
 impl Termination for ReturnWrapper {
     fn report(self) -> ExitCode {
         if self.val != SUCCESS {
-            match writeln!(std::io::stderr().lock(), "Error: {}", self.val) {
-                Ok(_) => {}, //success
-                Err(_) => {}, //fail
+            if let Err(_) = writeln!(std::io::stderr().lock(), "Error: {}", self.val) {
+                // Print fail
             }
         }
         ExitCode::from(self.val)

@@ -3,7 +3,7 @@
  * Email: d.m.palmer@wustl.edu
  * File: mod.rs
  * Summary: This file declares a module that encompasses the individual declarations,
- *  play, and player modules.
+ *  play, player, return wrapper, and scene fragment modules.
  *
  */
 
