@@ -30,12 +30,11 @@ const FIRST_FRAGMENT: usize = 0;
 const SECOND_FRAGMENT: usize = 1;
 const START: usize = 0;
 
-
+// This macro is a convenient way to print that a mutex has been poisoned and cannot be accessed
 macro_rules! poison_mutex_print {
     () => {
-        match writeln!(std::io::stderr().lock(), "Error: mutex was poisoned and could not be accessed") {
-            Ok(_) => {} //success
-            Err(_) => {} //fail
+        if let Err(_) = writeln!(std::io::stderr().lock(), "Error: mutex was poisoned and could not be accessed") {
+            // Print fail
         }
     };
 }
@@ -46,6 +45,7 @@ pub struct Play {
 }
 
 
+// This implementation block includes all functionality for the Play struct
 impl Play {
     pub fn new() -> Self {
         Self {
@@ -54,6 +54,8 @@ impl Play {
     }
 
     // This function processes a passed in ScriptConfig. For each item in the ScriptConfig if it contains a scene title it updates the title and otherwise creates a new SceneFragment, adds it to the Play's fragments, and prepares the fragment with its associated file. If it fails, the error is propagated out and otherwise Ok(()) is returned
+    // It spawns a new thread for each scene fragment so that preparation can be done more
+    // efficiently.
     fn process_config(&mut self, script_config: &ScriptConfig) -> Result<(), u8> {
         let mut title  = String::new();
         let mut thread_handles = Vec::new();
@@ -102,9 +104,8 @@ impl Play {
         if tokens.len() == SINGLE_TOKEN && tokens[FIRST_TOKEN] == SCENE_INDICATOR {
             use std::sync::atomic::Ordering;
             if declarations::WHINGE_ON.load(Ordering::SeqCst){
-                match writeln!(std::io::stderr().lock(), "Warning: scene identified but has no title so has not been added") {
-                    Ok(_) => {}, //success
-                    Err(_) => {}, //fail
+                if let Err(_) = writeln!(std::io::stderr().lock(), "Warning: scene identified but has no title so has not been added") {
+                    // Print fail
                 }
             }
             return;
@@ -117,9 +118,8 @@ impl Play {
             if tokens.len() != SINGLE_TOKEN{
                 use std::sync::atomic::Ordering;
                 if declarations::WHINGE_ON.load(Ordering::SeqCst) {
-                    match writeln!(std::io::stderr().lock(), "Warning: there are additional tokens in the line \"{}\" that is being treated as a config file name", line){
-                        Ok(_) => {}, //success
-                        Err(_) => {}, //fail
+                    if let Err(_) = writeln!(std::io::stderr().lock(), "Warning: there are additional tokens in the line \"{}\" that is being treated as a config file name", line){
+                        // Print fail
                     }
                 }
             }
@@ -136,9 +136,8 @@ impl Play {
         let mut lines: Vec<String> = Vec::new();
         declarations::grab_trimmed_file_lines(script_file_name, &mut lines)?;
         if lines.len() == EMPTY {
-            match writeln!(std::io::stderr().lock(), "Error: the script gen file must contain at least 1 line"){
-                Ok(_) => {}, //success
-                Err(_) => {}, //fail
+            if let Err(_) = writeln!(std::io::stderr().lock(), "Error: the script gen file must contain at least 1 line"){
+                // Print fail
             }
             return Err(declarations::ERR_SCRIPT_GEN);
         }
@@ -161,9 +160,8 @@ impl Play {
                     if !frag_guard.scene_title.is_empty() { 
                         Ok(()) 
                     } else {
-                        match writeln!(std::io::stderr().lock(), "Error: script generation failed") {
-                            Ok(_) => {}, //success
-                            Err(_) => {}, //fail
+                        if let Err(_) = writeln!(std::io::stderr().lock(), "Error: script generation failed") {
+                            //Print fail
                         }
                         Err(declarations::ERR_SCRIPT_GEN)
                     }
@@ -174,9 +172,8 @@ impl Play {
                 }
             }
         } else {
-            match writeln!(std::io::stderr().lock(), "Error: script generation failed"){
-                Ok(_) => {}, //success
-                Err(_) => {}, //fail
+            if let Err(_) = writeln!(std::io::stderr().lock(), "Error: script generation failed"){
+                // Print fail
             }
             Err(declarations::ERR_SCRIPT_GEN)
         }
@@ -185,6 +182,8 @@ impl Play {
 
     // This function prints the script by iterating over each scene fragment and printing
     // everything required for it, including character entrances, exits, and lines.
+    // It does this in a thread safe way by obtaining the mutex for each fragment because this may
+    // happen from different threads.
     pub fn recite(&mut self) { 
         let len = self.fragments.len();
         for i in START..len {

@@ -28,11 +28,12 @@ const FIRST_LINE: usize = 0;
 const EMPTY: usize = 0;
 const EXPECTED_NUM_SPEAKERS: usize = 1;
 
+
+// This macro gives a convenient way to print that a mutex has been poisoned
 macro_rules! poison_mutex_print {
     () => {
-        match writeln!(std::io::stderr().lock(), "Error: mutex was poisoned and could not be accessed") {
-            Ok(_) => {} //success
-            Err(_) => {} //fail
+        if let Err(_) = writeln!(std::io::stderr().lock(), "Error: mutex was poisoned and could not be accessed") {
+            // Print fail
         }
     };
 }
@@ -44,6 +45,8 @@ pub struct SceneFragment {
 }
 
 
+// This implementation block declares and defines all functions and methods associated with the
+// SceneFragment struct
 impl SceneFragment {
     pub fn new(title: &str) -> Self {
         Self {
@@ -55,6 +58,7 @@ impl SceneFragment {
     // This function processes a passed in PlayConfig. For each item in the PlayConfig it creates a
     // Player, adds it to the Play's characters, and prepares the character with its associated
     // text file. 
+    // Each player is prepared in new thread for efficiency.
     // If it fails the error is propagated out and otherwise Ok(()) is returned
     fn process_config(&mut self, play_config: &PlayConfig) -> Result<(), u8> {
         let mut thread_handles = Vec::new();
@@ -93,9 +97,8 @@ impl SceneFragment {
         if delimited_tokens.len() != CONFIG_LINE_TOKENS {
             use std::sync::atomic::Ordering;
             if declarations::WHINGE_ON.load(Ordering::SeqCst) {
-                match writeln!(std::io::stderr().lock(), "Warning: there were not exactly two distinct tokens in the line {}", line) {
-                    Ok(_) => {}, //success
-                    Err(_) => {}, //fail
+                if let Err(_) = writeln!(std::io::stderr().lock(), "Warning: there were not exactly two distinct tokens in the line {}", line) {
+                    // Print fail
                 }
             }
         }
@@ -116,9 +119,8 @@ impl SceneFragment {
         let mut lines: Vec<String> = Vec::new();
         declarations::grab_trimmed_file_lines(config_file_name, &mut lines)?;
         if lines.len() < MIN_CONFIG_LINES {
-            match writeln!(std::io::stderr().lock(), "Error: the config file must contain at least one character and associated text file") {
-                Ok(_) => {}, //success
-                Err(_) => {},//fail
+            if let Err(_) = writeln!(std::io::stderr().lock(), "Error: the config file must contain at least one character and associated text file") {
+                // Print fail
             }
             return Err(declarations::ERR_SCRIPT_GEN);
         }
@@ -131,6 +133,8 @@ impl SceneFragment {
 
     // This method does the script generation for a given scene. It uses the above functions to
     // populate the self Play with associated information.
+    // Because it is ran from within child threads it panics when it encounters errors in order to
+    // properly pass them up to the parent thread.
     pub fn prepare(&mut self, config_file_name: &str)  {
         let mut play_config: PlayConfig = Default::default();
         if let Err(_) = Self::read_config(config_file_name, &mut play_config){
@@ -169,9 +173,8 @@ impl SceneFragment {
             while min_line_number > next_line_number {
                 use std::sync::atomic::Ordering;
                 if declarations::WHINGE_ON.load(Ordering::SeqCst) {
-                    match writeln!(std::io::stderr().lock(), "Warning: missing line {}", next_line_number) {
-                        Ok(_) => {}, //success
-                        Err(_) => {}, //fail
+                    if let Err(_) = writeln!(std::io::stderr().lock(), "Warning: missing line {}", next_line_number) {
+                        // Print fail
                     }
                 }
                 next_line_number += 1;
@@ -195,9 +198,8 @@ impl SceneFragment {
             if num_speakers != EXPECTED_NUM_SPEAKERS {
                 use std::sync::atomic::Ordering;
                 if declarations::WHINGE_ON.load(Ordering::SeqCst) {
-                    match writeln!(std::io::stderr().lock(), "Warning: there are {} characters who have a line with number {}", num_speakers, min_line_number) {
-                        Ok(_) => {}, //success
-                        Err(_) => {}, //fail
+                    if let Err(_) = writeln!(std::io::stderr().lock(), "Warning: there are {} characters who have a line with number {}", num_speakers, min_line_number) {
+                        // Print fail
                     }
                 }
             }
@@ -208,9 +210,8 @@ impl SceneFragment {
     // This function announces all characters in self but not in other for scene transitions
     pub fn enter(&self, other: &Self) {
         if !self.scene_title.trim().is_empty(){
-            match writeln!(std::io::stdout().lock(), "\n{}\n", self.scene_title){
-                Ok(_) => {}, //success
-                Err(_) => {}, //fail
+            if let Err(_) = writeln!(std::io::stdout().lock(), "\n{}\n", self.scene_title){
+                // Print fail
             }
         }
         let other_names: HashSet<String> = other.characters.iter()
@@ -234,9 +235,8 @@ impl SceneFragment {
             }
         }) {
             if !other_names.contains(&name) {
-                match writeln!(std::io::stdout().lock(), "[Enter {}.]", name) {
-                    Ok(_) => {}, //success
-                    Err(_) => {}, //fail
+                if let Err(_) = writeln!(std::io::stdout().lock(), "[Enter {}.]", name) {
+                    // Print fail
                 }
             }
         }
@@ -245,9 +245,8 @@ impl SceneFragment {
     // This function announces the entrance of all characters in self
     pub fn enter_all(&self) {
         if !self.scene_title.trim().is_empty(){
-            match writeln!(std::io::stdout().lock(), "\n{}\n", self.scene_title){
-                Ok(_) => {}, //success
-                Err(_) => {}, //fail
+            if let Err(_) = writeln!(std::io::stdout().lock(), "\n{}\n", self.scene_title){
+                // Print fail
             }
         }
         for name in self.characters.iter().filter_map(|c| {
@@ -259,9 +258,8 @@ impl SceneFragment {
                 }
             }
         }) {
-            match writeln!(std::io::stdout().lock(), "[Enter {}.]", name) {
-                Ok(_) => {}, //success
-                Err(_) => {}, //fail
+            if let Err(_) = writeln!(std::io::stdout().lock(), "[Enter {}.]", name) {
+                // Print fail
             }
         }
     }
@@ -280,9 +278,8 @@ impl SceneFragment {
                 }
             })
             .collect();
-        match writeln!(std::io::stdout().lock()) {
-            Ok(_) => {}, //success
-            Err(_) => {}, //fail
+        if let Err(_) = writeln!(std::io::stdout().lock()) {
+            // Print fail
         }
         for name in self.characters.iter().rev().filter_map(|c| {
             match c.lock() {
@@ -294,23 +291,20 @@ impl SceneFragment {
             }
         }) {
             if !other_names.contains(&name) {
-                match writeln!(std::io::stdout().lock(), "[Exit {}.]", name){
-                    Ok(_) => {}, //success
-                    Err(_) => {}, //fail
+                if let Err(_) = writeln!(std::io::stdout().lock(), "[Exit {}.]", name){
+                    // Print fail
                 }
             }
         }
-        match writeln!(std::io::stdout().lock()) {
-            Ok(_) => {}, //success
-            Err(_) => {}, //fail
+        if let Err(_) = writeln!(std::io::stdout().lock()) {
+            // Print fail
         }
     }
 
     // This function announces the exit of all characters in self
     pub fn exit_all(&self) {
-        match writeln!(std::io::stdout().lock()) {
-            Ok(_) => {}, //success
-            Err(_) => {}, //fail
+        if let Err(_) = writeln!(std::io::stdout().lock()) {
+            // Print fail
         }
         for name in self.characters.iter().rev().filter_map(|c| {
             match c.lock() {
@@ -321,14 +315,12 @@ impl SceneFragment {
                 }
             }
         }) {
-            match writeln!(std::io::stdout().lock(), "[Exit {}.]", name) {
-                Ok(_) => {}, //success
-                Err(_) => {}, //fail
+            if let Err(_) = writeln!(std::io::stdout().lock(), "[Exit {}.]", name) {
+                // Print fail
             }
         }
-        match writeln!(std::io::stdout().lock()) {
-            Ok(_) => {}, //success
-            Err(_) => {}, //fail
+        if let Err(_) = writeln!(std::io::stdout().lock()) {
+            // Print fail
         }
     }
 

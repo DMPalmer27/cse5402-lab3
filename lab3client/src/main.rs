@@ -20,9 +20,8 @@ use lab3::return_wrapper::ReturnWrapper;
 // This function is called whenver the program is ran with improper command line arguments and it
 // prints a message telling the user how to run the program
 fn usage(name: &String) {
-    match writeln!(std::io::stdout().lock(), "Usage: ./{name} <script_file_name> [whinge]") {
-        Ok(_) => {}, //success
-        Err(_) => {}, //fail
+    if let Err(_) = writeln!(std::io::stdout().lock(), "Usage: ./{name} <script_file_name> [whinge]") {
+        // Print fail
     }
 }
 
